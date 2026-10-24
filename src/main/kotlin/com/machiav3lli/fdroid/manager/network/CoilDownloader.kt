@@ -127,10 +127,10 @@ object CoilDownloader {
 fun createScreenshotUri(
     repository: Repository,
     screenshot: String,
-): Uri = (repository.address + screenshot).toUri()
+): Uri = (if (screenshot.startsWith("http")) screenshot else repository.address + screenshot).toUri()
 
 fun createIconUri(icon: String, address: String?, auth: String?): Pair<String, String> =
-    (address + icon).toUri().let {
+    (if (icon.startsWith("http")) icon else address + icon).toUri().let {
         val regex = Regex("""icon_[^/]+\.png$""")
         (if (auth.isNullOrBlank()) it
         else it.buildUpon().appendQueryParameter(QUERY_AUTHENTICATION, auth).build())

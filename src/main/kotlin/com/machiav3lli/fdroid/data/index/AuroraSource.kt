@@ -5,6 +5,7 @@ import com.aurora.gplayapi.helpers.AppDetailsHelper
 import com.machiav3lli.fdroid.data.database.entity.IndexProduct
 import com.machiav3lli.fdroid.data.database.entity.Release
 import com.machiav3lli.fdroid.data.database.entity.Repository
+import com.machiav3lli.fdroid.data.entity.Author
 import com.machiav3lli.fdroid.data.index.RepositoryUpdater.ErrorType
 import com.machiav3lli.fdroid.data.index.RepositoryUpdater.UpdateException
 import kotlinx.coroutines.Dispatchers
@@ -38,7 +39,7 @@ object AuroraSource {
             if (app.displayName.isBlank() || app.versionCode.toLong() == 0L) {
                 throw UpdateException(ErrorType.PARSING, "App nao encontrado no Play: $pkg")
             }
-            val tag = app.versionCode.toString()
+            val tag = "${app.versionCode}-m2"
             if (repository.lastModified == tag) return@withContext null
 
             val now = System.currentTimeMillis()
@@ -50,7 +51,7 @@ object AuroraSource {
                 version = app.versionName,
                 versionCode = app.versionCode.toLong(),
                 added = now,
-                size = 0L,
+                size = app.size,
                 minSdkVersion = 0,
                 targetSdkVersion = 0,
                 maxSdkVersion = 0,
@@ -73,8 +74,15 @@ object AuroraSource {
             )
             val product = IndexProduct(repository.id, pkg).apply {
                 this.label = label
-                this.summary = "Google Play"
-                this.description = "Google Play ($pkg)"
+                this.summary = app.shortDescription.ifBlank { app.developerName.ifBlank { "Google Play" } }
+                this.description = app.description.ifBlank { app.shortDescription }
+                    .replace("\n", "<br/>").ifBlank { "Google Play ($pkg)" }
+                this.whatsNew = app.changes
+                this.icon = app.iconArtwork.url.let {
+                    if (it.contains("googleusercontent.com") && !it.contains("=")) "$it=s256" else it
+                }
+                this.screenshots = app.screenshots.map { it.url }.filter { it.isNotBlank() }
+                this.author = Author(app.developerName, app.developerEmail, app.developerWebsite)
                 this.added = now
                 this.updated = now
                 this.releases = listOf(rel)
