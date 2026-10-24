@@ -96,7 +96,7 @@ object AuroraTest {
         setProperty("SharedLibraries", (context.packageManager.systemSharedLibraryNames?.toList() ?: emptyList()).joinToString(","))
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         setProperty("GL.Version", am.deviceConfigurationInfo.reqGlEsVersion.toString())
-        setProperty("GL.Extensions", "GL_OES_texture_float,GL_OES_egl_image,GL_EXT_texture_filter_anisotropic")
+        setProperty("GL.Extensions", EglExtensionProvider.eglExtensions.joinToString(","))
         setProperty("Client", "android-google")
         setProperty("GSF.version", "203019037")
         setProperty("Vending.version", "82151710")
