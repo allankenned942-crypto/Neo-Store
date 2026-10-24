@@ -136,6 +136,7 @@ android {
 }
 
 dependencies {
+    implementation("com.auroraoss:gplayapi:3.6.4")
     // Core
     implementation(libs.kotlin.stdlib)
     implementation(libs.ksp)

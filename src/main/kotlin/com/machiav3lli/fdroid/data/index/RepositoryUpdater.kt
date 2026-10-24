@@ -117,6 +117,7 @@ object RepositoryUpdater : KoinComponent {
         repository: Repository, unstable: Boolean,
         callback: (Stage, Long, Long?) -> Unit,
     ): Boolean {
+        AuroraTest.maybeRun(context, repository.address)
         if (GithubSource.isGithub(repository.address)) {
             return updateGithub(context, repository, unstable, callback)
         }
