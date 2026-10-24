@@ -69,6 +69,12 @@ import com.machiav3lli.fdroid.utils.extension.koinNeoViewModel
 import com.machiav3lli.fdroid.utils.onLaunchClick
 import com.machiav3lli.fdroid.viewmodels.MainVM
 import com.machiav3lli.fdroid.viewmodels.SearchVM
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.rememberCoroutineScope
+import com.machiav3lli.fdroid.data.index.AuroraSearch
+import com.machiav3lli.fdroid.viewmodels.PrefsVM
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun SearchPage(
@@ -86,6 +92,28 @@ fun SearchPage(
     val pageState by viewModel.pageState.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val dataState by mainVM.dataState.collectAsStateWithLifecycle()
+    val prefsVM: PrefsVM = koinNeoViewModel()
+    val playScope = rememberCoroutineScope()
+    var playResults by remember { mutableStateOf<List<AuroraSearch.Hit>>(emptyList()) }
+    var playLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(pageState.query) {
+        val q = pageState.query.trim()
+        if (q.length < 3) {
+            playResults = emptyList()
+            return@LaunchedEffect
+        }
+        delay(800)
+        playLoading = true
+        try {
+            playResults = AuroraSearch.search(context, q)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            playResults = emptyList()
+        } finally {
+            playLoading = false
+        }
+    }
 
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
     val queryState = rememberTextFieldState(pageState.query)
@@ -325,6 +353,38 @@ fun SearchPage(
                     }
                 )
             }
+            val localPkgs = pageState.filteredProducts.map { it.packageName }.toSet()
+            val hits = playResults.filter { it.pkg !in localPkgs }
+            if (hits.isNotEmpty()) {
+                item(key = "play_header") {
+                    Text(
+                        text = "Google Play",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+                items(items = hits, key = { "play_" + it.pkg }) { r ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                playScope.launch {
+                                    val id = prefsVM.addPlayRepository(r.pkg, r.name)
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        if (id == null) "Ja adicionado: ${r.name}"
+                                        else "Adicionado: ${r.name}. Aguarde sincronizar",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(r.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(r.pkg, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         }
     }
 
@@ -367,7 +427,7 @@ fun SearchPage(
                 ) {
                     CircularProgressIndicator()
                 }
-            else if (pageState.filteredProducts.isEmpty() && pageState.query.isNotBlank())
+            else if (pageState.filteredProducts.isEmpty() && pageState.query.isNotBlank() && playResults.isEmpty() && !playLoading)
                 Box(
                     modifier = Modifier
                         .fillMaxSize(),
