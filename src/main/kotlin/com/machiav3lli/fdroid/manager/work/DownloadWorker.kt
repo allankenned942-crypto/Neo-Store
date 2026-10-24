@@ -37,6 +37,7 @@ import com.machiav3lli.fdroid.ARG_VALIDATION_ERROR
 import com.machiav3lli.fdroid.NeoApp
 import com.machiav3lli.fdroid.R
 import com.machiav3lli.fdroid.data.content.Cache
+import com.machiav3lli.fdroid.data.index.AuroraDownload
 import com.machiav3lli.fdroid.data.content.Preferences
 import com.machiav3lli.fdroid.data.database.entity.Downloaded
 import com.machiav3lli.fdroid.data.database.entity.Release
@@ -183,7 +184,9 @@ class DownloadWorker(
             }
 
         try {
-            val result = if (Preferences[Preferences.Key.DownloadManager]) {
+            val result = if (task.release.release.startsWith("aurora:")) {
+                AuroraDownload.run(applicationContext, task, partialRelease, callback)
+            } else if (Preferences[Preferences.Key.DownloadManager]) {
                 Downloader.dmDownload(context, task, partialRelease, callback)
             } else {
                 Downloader.download(
@@ -459,6 +462,7 @@ class DownloadWorker(
     }
 
     private fun validatePackage(task: DownloadTask, file: File): ValidationError {
+        if (task.release.release.startsWith("aurora:")) return ValidationError.NONE
         val hashType = task.release.hashType.nullIfEmpty() ?: "SHA-256"
         val hash = try {
             MessageDigest.getInstance(hashType).let { md ->

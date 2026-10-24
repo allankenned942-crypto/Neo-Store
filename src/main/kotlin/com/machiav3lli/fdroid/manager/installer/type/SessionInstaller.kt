@@ -122,6 +122,7 @@ class SessionInstaller(context: Context) : BaseInstaller(context) {
             // Open session and write APK, then commit
             sessionInstaller.openSession(sessionId).use { session ->
                 writeApkToSession(session, apkFile, packageName)
+                writeSplitsToSession(session, apkFile)
                 commitSession(session, sessionId, packageName)
                 cleanupApkIfNeeded(apkFile)
             }
@@ -166,6 +167,18 @@ class SessionInstaller(context: Context) : BaseInstaller(context) {
             // Make sure the stream is flushed
             out.flush()
         }
+    }
+
+    private fun writeSplitsToSession(session: PackageInstaller.Session, apkFile: File) {
+        val dir = apkFile.parentFile ?: return
+        dir.listFiles { f -> f.name.startsWith(apkFile.name + ".split") }
+            ?.sortedBy { it.name }
+            ?.forEachIndexed { i, f ->
+                session.openWrite("split_$i.apk", 0, f.length()).use { out ->
+                    f.inputStream().use { it.copyTo(out) }
+                    out.flush()
+                }
+            }
     }
 
     private suspend fun copyWithProgress(

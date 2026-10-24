@@ -117,7 +117,9 @@ object RepositoryUpdater : KoinComponent {
         repository: Repository, unstable: Boolean,
         callback: (Stage, Long, Long?) -> Unit,
     ): Boolean {
-        AuroraTest.maybeRun(context, repository.address)
+        if (AuroraSource.isAurora(repository.address)) {
+            return updateAurora(context, repository, unstable, callback)
+        }
         if (GithubSource.isGithub(repository.address)) {
             return updateGithub(context, repository, unstable, callback)
         }
@@ -229,6 +231,46 @@ object RepositoryUpdater : KoinComponent {
         callback: (Stage, Long, Long?) -> Unit,
     ): Boolean {
         val fetched = GithubSource.fetch(context, repository, callback) ?: return false
+        var rollback = true
+        return updaterMutex.withLock {
+            try {
+                db.getProductTempDao().emptyTable()
+                db.getReleaseTempDao().emptyTable()
+                db.getCategoryTempDao().emptyTable()
+
+                val features = context.packageManager.systemAvailableFeatures
+                    .asSequence().map { it.name }.toSet() + setOf("android.hardware.touchscreen")
+                fetched.product.refreshReleases(features, unstable)
+                callback(Stage.MERGE, 1L, 1L)
+                insertProductBatch(listOf(fetched.product))
+
+                val changed = repository.update(
+                    mirrors = emptyList(),
+                    name = fetched.label,
+                    description = fetched.description,
+                    version = -1,
+                    lastModified = fetched.tag,
+                    entityTag = "",
+                    timestamp = fetched.timestamp,
+                    webBaseUrl = null,
+                    entryLastModified = null,
+                    entryEntityTag = null,
+                )
+                commitChanges(changed, changed.fingerprint, callback)
+                rollback = false
+                true
+            } finally {
+                if (rollback) db.finishTemporary(repository, false)
+            }
+        }
+    }
+
+    private suspend fun updateAurora(
+        context: Context,
+        repository: Repository, unstable: Boolean,
+        callback: (Stage, Long, Long?) -> Unit,
+    ): Boolean {
+        val fetched = AuroraSource.fetch(context, repository) ?: return false
         var rollback = true
         return updaterMutex.withLock {
             try {
