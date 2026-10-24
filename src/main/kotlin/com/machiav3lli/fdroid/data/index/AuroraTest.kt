@@ -62,7 +62,10 @@ object AuroraTest {
             locale = Locale.getDefault()
         )
         val app = AppDetailsHelper(authData).using(client).getAppByPackageName(pkg)
-        return "Aurora OK: ${app.displayName} ${app.versionName} (${app.versionCode})"
+        val files = com.aurora.gplayapi.helpers.PurchaseHelper(authData).using(client)
+            .purchase(pkg, app.versionCode.toLong(), app.offerType)
+        return "Aurora OK: ${app.displayName} ${app.versionName} (${app.versionCode})\n" +
+            files.joinToString("\n") { "${it.type} ${it.name} ${it.size}" }
     }
 
     private fun deviceProperties(context: Context): Properties = Properties().apply {
