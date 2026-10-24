@@ -35,10 +35,10 @@ object AuroraTest {
             val msg = try {
                 run(app, pkg)
             } catch (t: Throwable) {
-                "Aurora ERRO: ${t.javaClass.simpleName}: ${t.message}"
+                "Aurora ERRO: " + android.util.Log.getStackTraceString(t).take(1500)
             }
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(app, msg, Toast.LENGTH_LONG).show()
+                (app.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("aurora", msg)); Toast.makeText(app, "Copiado: " + msg.take(120), Toast.LENGTH_LONG).show()
             }
         }
     }
