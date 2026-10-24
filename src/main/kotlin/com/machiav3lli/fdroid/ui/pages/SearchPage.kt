@@ -372,9 +372,23 @@ fun SearchPage(
                                     val id = prefsVM.addPlayRepository(r.pkg, r.name)
                                     android.widget.Toast.makeText(
                                         context,
-                                        if (id == null) "Ja adicionado: ${r.name}"
-                                        else "Adicionado: ${r.name}. Aguarde sincronizar",
+                                        if (id == null) "Abrindo: ${r.name}"
+                                        else "Sincronizando: ${r.name}...",
                                         android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                    var found = false
+                                    for (i in 0 until 40) {
+                                        found = kotlinx.coroutines.withContext(
+                                            kotlinx.coroutines.Dispatchers.IO
+                                        ) { mainVM.productExist(r.pkg) }
+                                        if (found) break
+                                        delay(1000)
+                                    }
+                                    if (found) neoActivity.navigateProduct(r.pkg)
+                                    else android.widget.Toast.makeText(
+                                        context,
+                                        "Nao sincronizou (pode ser erro 429). Tente de novo",
+                                        android.widget.Toast.LENGTH_LONG
                                     ).show()
                                 }
                             }
