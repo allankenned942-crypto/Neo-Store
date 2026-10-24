@@ -120,6 +120,21 @@ fun PrefsReposPage(viewModel: PrefsVM = koinNeoViewModel()) {
         }
     }
 
+    val showPlay = remember { mutableStateOf(false) }
+    if (showPlay.value) PlaySearchDialog(
+        onDismiss = { showPlay.value = false },
+        onPick = { pkg, name ->
+            scope.launch {
+                val id = viewModel.addPlayRepository(pkg, name)
+                android.widget.Toast.makeText(
+                    mActivity,
+                    if (id == null) "Ja adicionado: $name" else "Adicionado: $name",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    )
+
     NavigableListDetailPaneScaffold(
         navigator = paneNavigator,
         listPane = {
@@ -215,6 +230,12 @@ fun PrefsReposPage(viewModel: PrefsVM = koinNeoViewModel()) {
                                     viewModel.setSearchQuery(newQuery)
                                 }
                             )
+                        }
+                        item {
+                            androidx.compose.material3.Button(
+                                onClick = { showPlay.value = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { androidx.compose.material3.Text("Buscar na Google Play") }
                         }
                         stickyHeader(key = "enabledTitle") {
                             PreferenceGroupHeading(

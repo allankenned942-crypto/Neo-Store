@@ -11,6 +11,7 @@ import com.machiav3lli.fdroid.data.database.entity.Repository.Companion.newRepos
 import com.machiav3lli.fdroid.data.repository.ExtrasRepository
 import com.machiav3lli.fdroid.data.repository.InstalledRepository
 import com.machiav3lli.fdroid.data.repository.RepositoriesRepository
+import com.machiav3lli.fdroid.manager.work.SyncWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -95,6 +96,19 @@ class PrefsVM(
                 fingerprint = fingerprint
             )
         )
+    }
+
+    suspend fun addPlayRepository(pkg: String, label: String): Long? {
+        val address = "aurora://$pkg"
+        if (reposRepo.isDuplicateAddress(address)) return null
+        val repo = Repository(
+            address = address,
+            name = label,
+            description = "Google Play ($pkg)",
+        )
+        val id = reposRepo.insertReturn(repo)
+        SyncWorker.enableRepo(repo.copy(id = id), true)
+        return id
     }
 
     fun insertExtras(vararg items: Extras) {
