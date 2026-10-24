@@ -53,7 +53,7 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
             applicationIdSuffix = ".debug"
-            resValue("string", "application_name", "Neo Store - Debug")
+            resValue("string", "application_name", "Neo Store - Teste")
         }
         register("neo") {
             isMinifyEnabled = false
