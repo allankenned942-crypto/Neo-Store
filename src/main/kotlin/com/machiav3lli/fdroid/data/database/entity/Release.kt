@@ -93,10 +93,12 @@ open class Release(
         get() = "$packageName&$repositoryId#$versionCode%$signature§$platforms.$hash"
 
     fun getDownloadUrl(repository: Repository): String {
+        if (release.startsWith("http")) return release
         return repository.downloadAddress.toUri().buildUpon().appendPath(release).build().toString()
     }
 
     fun getDownloadMirrorUrls(repository: Repository): Array<String> {
+        if (release.startsWith("http")) return arrayOf(release)
         return repository.downloadMirrorAddresses
             .map { it.toUri().buildUpon().appendPath(release).build().toString() }
             .toTypedArray()
