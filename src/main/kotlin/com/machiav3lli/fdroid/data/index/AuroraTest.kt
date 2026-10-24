@@ -44,10 +44,10 @@ object AuroraTest {
     }
 
     private fun run(context: Context, pkg: String): String {
-        val client = AuroraHttp()
+        val client = AuroraOkHttp()
         val props = deviceProperties(context)
         val map = props.stringPropertyNames().associateWith { props.getProperty(it) }
-        val resp = client.postAuth(DISPENSER, JSONObject(map).toString().toByteArray())
+        val resp = client.postAuth(DISPENSER, kotlinx.serialization.json.Json.encodeToString(com.aurora.gplayapi.data.serializers.PropertiesSerializer, props).toByteArray())
         if (!resp.isSuccessful) return "Aurora ERRO login: HTTP ${resp.code}"
         val json = JSONObject(String(resp.responseBytes))
         val email = json.getString("email")
