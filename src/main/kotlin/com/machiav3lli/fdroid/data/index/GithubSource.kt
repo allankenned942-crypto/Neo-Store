@@ -18,6 +18,8 @@ import com.machiav3lli.fdroid.utils.extension.android.signerSHA256Signatures
 import com.machiav3lli.fdroid.utils.extension.android.versionCodeCompat
 import com.machiav3lli.fdroid.utils.extension.text.hex
 import io.ktor.http.HttpStatusCode
+import androidx.core.graphics.drawable.toBitmap
+import com.machiav3lli.fdroid.data.entity.Author
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -79,11 +81,30 @@ object GithubSource {
             ?: throw UpdateException(ErrorType.VALIDATION, "Endereco GitHub invalido")
 
         val release = fetchLatestRelease(context, owner, repo, repository.address)
-        if (release.tagName.isNotEmpty() && repository.lastModified == release.tagName) return null
+        if (release.tagName.isNotEmpty() && repository.lastModified == "${release.tagName}-m3") return null
 
         val asset = pickAsset(release.assets)
             ?: throw UpdateException(ErrorType.PARSING, "Nenhum .apk na release ${release.tagName}")
 
+        val repoJson = runCatching {
+            val base = if (repository.address.contains("codeberg.org")) "https://codeberg.org/api/v1/repos/$owner/$repo" else "https://api.github.com/repos/$owner/$repo"
+            val (st, tx) = getText(context, base)
+            if (st.value in 200..299) org.json.JSONObject(tx) else null
+        }.getOrNull()
+        val repoDesc = repoJson?.let { if (it.isNull("description")) "" else it.optString("description") }.orEmpty()
+        val avatar = repoJson?.optJSONObject("owner")?.optString("avatar_url").orEmpty()
+        val branch = repoJson?.optString("default_branch").orEmpty().ifBlank { "HEAD" }
+        val rawBase = if (repository.address.contains("codeberg.org"))
+            "https://codeberg.org/$owner/$repo/raw/branch/$branch"
+        else "https://raw.githubusercontent.com/$owner/$repo/$branch"
+        val readme = runCatching {
+            var txt = ""
+            for (n in listOf("README.md", "readme.md", "Readme.md")) {
+                val (st, tx) = getText(context, "$rawBase/$n")
+                if (st.value in 200..299 && tx.isNotBlank()) { txt = tx; break }
+            }
+            txt
+        }.getOrNull().orEmpty()
         val apk = Cache.getTemporaryFile(context)
         try {
             val result = try {
@@ -124,6 +145,15 @@ object GithubSource {
                 ?: throw UpdateException(ErrorType.PARSING, "APK sem assinatura")
 
             val label = appInfo?.loadLabel(pm)?.toString()?.takeIf { it.isNotBlank() } ?: repo
+            val realIcon: String? = runCatching {
+                if (appInfo == null || appInfo.icon == 0) null else {
+                    val bmp = appInfo.loadIcon(pm).toBitmap(192, 192)
+                    val dir = File(context.filesDir, "forge_icons").apply { mkdirs() }
+                    val f = File(dir, "${info.packageName}_${info.versionCodeCompat}.png")
+                    f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                    f.toUri().toString()
+                }
+            }.getOrNull()
             val body = release.body.orEmpty()
             val timestamp = release.publishedAt
                 ?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
@@ -163,20 +193,24 @@ object GithubSource {
 
             val product = IndexProduct(repository.id, info.packageName).apply {
                 this.label = label
-                this.summary = summary
-                this.description = body
+                this.summary = repoDesc.ifBlank { summary }
+                this.description = ForgeReadme.describe(repoDesc, readme, body)
                 this.added = timestamp
                 this.updated = timestamp
                 this.releases = listOf(rel)
                 this.source = "https://" + (repository.address.toUri().host ?: "github.com").removePrefix("www.") + "/$owner/$repo"
                 this.web = release.htmlUrl
+                this.icon = realIcon ?: avatar
+                this.screenshots = ForgeReadme.images(readme, rawBase)
+                this.whatsNew = body.replace("\n", "<br/>")
+                this.author = Author(owner, "", "")
             }
 
             return Fetched(
                 product = product,
                 label = label,
                 description = "$owner/$repo",
-                tag = release.tagName,
+                tag = "${release.tagName}-m3",
                 timestamp = timestamp,
             )
         } finally {

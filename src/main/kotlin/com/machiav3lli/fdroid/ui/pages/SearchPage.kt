@@ -72,6 +72,11 @@ import com.machiav3lli.fdroid.viewmodels.SearchVM
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.rememberCoroutineScope
 import com.machiav3lli.fdroid.data.index.AuroraSearch
+import com.machiav3lli.fdroid.data.index.GithubSource
+import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import com.machiav3lli.fdroid.data.index.ForgeSearch
 import com.machiav3lli.fdroid.viewmodels.PrefsVM
 import kotlinx.coroutines.delay
@@ -161,6 +166,7 @@ fun SearchPage(
         onDismiss()
     }
 
+    var srcFilter by rememberSaveable { mutableStateOf("") }
     var forgeResults by remember { mutableStateOf<List<ForgeSearch.Hit>>(emptyList()) }
     LaunchedEffect(pageState.query) {
         val q = pageState.query.trim()
@@ -260,9 +266,30 @@ fun SearchPage(
                     SelectChip(
                         text = stringResource(id = R.string.all),
                         icon = Phosphor.CirclesFour,
-                        checked = currentTab == 0,
+                        checked = currentTab == 0 && srcFilter == "",
                         alwaysShowIcon = true,
                     ) {
+                        srcFilter = ""
+                        viewModel.setSearchSource(Source.SEARCH)
+                    }
+                }
+                item {
+                    SelectChip(
+                        text = "Aurora",
+                        checked = srcFilter == "aurora",
+                        alwaysShowIcon = false,
+                    ) {
+                        srcFilter = if (srcFilter == "aurora") "" else "aurora"
+                        viewModel.setSearchSource(Source.SEARCH)
+                    }
+                }
+                item {
+                    SelectChip(
+                        text = "Komi",
+                        checked = srcFilter == "komi",
+                        alwaysShowIcon = false,
+                    ) {
+                        srcFilter = if (srcFilter == "komi") "" else "komi"
                         viewModel.setSearchSource(Source.SEARCH)
                     }
                 }
@@ -273,6 +300,7 @@ fun SearchPage(
                         checked = currentTab == 1,
                         alwaysShowIcon = true,
                     ) {
+                        srcFilter = ""
                         viewModel.setSearchSource(Source.SEARCH_INSTALLED)
                     }
                 }
@@ -283,6 +311,7 @@ fun SearchPage(
                         checked = currentTab == 2,
                         alwaysShowIcon = true,
                     ) {
+                        srcFilter = ""
                         viewModel.setSearchSource(Source.SEARCH_NEW)
                     }
                 }
@@ -293,6 +322,7 @@ fun SearchPage(
                         checked = currentTab == 3,
                         alwaysShowIcon = true,
                     ) {
+                        srcFilter = ""
                         viewModel.setSearchSource(Source.SEARCH_FAVORITES)
                     }
                 }
@@ -327,6 +357,17 @@ fun SearchPage(
         }
     }
 
+    val shownProducts = when (srcFilter) {
+        "aurora" -> pageState.filteredProducts.filter {
+            dataState.reposMap[it.repositoryId]?.address?.startsWith("aurora:") == true
+        }
+        "komi" -> pageState.filteredProducts.filter {
+            dataState.reposMap[it.repositoryId]?.address
+                ?.let { a -> GithubSource.isGithub(a) } == true
+        }
+        else -> pageState.filteredProducts
+    }
+
     val productsList: @Composable (() -> Unit) = {
         LazyColumn(
             modifier = Modifier
@@ -335,7 +376,7 @@ fun SearchPage(
             state = listState,
         ) {
             items(
-                items = pageState.filteredProducts,
+                items = shownProducts,
                 key = { it.packageName },
             ) { item ->
                 ProductsListItem(
@@ -371,7 +412,7 @@ fun SearchPage(
                     }
                 )
             }
-            if (forgeResults.isNotEmpty()) {
+            if (forgeResults.isNotEmpty() && (srcFilter == "" || srcFilter == "komi")) {
                 item(key = "forge_header") {
                     Text(
                         text = "GitHub / Codeberg",
@@ -406,17 +447,26 @@ fun SearchPage(
                             }
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Text(r.name, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "${r.host} - ${r.stars} estrelas" +
-                                    (if (r.desc.isNotBlank()) " - ${r.desc.take(80)}" else ""),
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (r.icon.isNotBlank()) AsyncImage(
+                                model = r.icon, contentDescription = null,
+                                modifier = Modifier.size(44.dp).clip(MaterialTheme.shapes.small)
+                            ) else Box(Modifier.size(44.dp))
+                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                Text(r.name, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "${r.host} - ${r.stars} estrelas" +
+                                            (if (r.desc.isNotBlank()) " - ${r.desc.take(80)}" else ""),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2
+                                )
+                            }
+                        }
                     }
                 }
             }
             val localPkgs = pageState.filteredProducts.map { it.packageName }.toSet()
-            val hits = playResults.filter { it.pkg !in localPkgs }
+            val hits = if (srcFilter == "" || srcFilter == "aurora") playResults.filter { it.pkg !in localPkgs } else emptyList()
             if (hits.isNotEmpty()) {
                 item(key = "play_header") {
                     Text(
@@ -456,8 +506,16 @@ fun SearchPage(
                             }
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Text(r.name, style = MaterialTheme.typography.bodyLarge)
-                        Text(r.pkg, style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (r.icon.isNotBlank()) AsyncImage(
+                                model = r.icon, contentDescription = null,
+                                modifier = Modifier.size(44.dp).clip(MaterialTheme.shapes.small)
+                            ) else Box(Modifier.size(44.dp))
+                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                Text(r.name, style = MaterialTheme.typography.bodyLarge)
+                                Text(r.pkg, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
                 }
             }

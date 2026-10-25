@@ -9,7 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 object AuroraSearch {
-    class Hit(val pkg: String, val name: String)
+    class Hit(val pkg: String, val name: String, val icon: String = "")
 
     suspend fun search(context: Context, query: String): List<Hit> =
         withContext(Dispatchers.IO) {
@@ -25,7 +25,7 @@ object AuroraSearch {
                         .flatMap { it.clusterAppList }
                         .filter { it.packageName.isNotBlank() }
                         .distinctBy { it.packageName }
-                        .map { Hit(it.packageName, it.displayName) }
+                        .map { Hit(it.packageName, it.displayName, it.iconArtwork.url.let { u -> if (u.contains("googleusercontent.com") && !u.contains("=")) "$u=s128" else u }) }
                     if (list.isNotEmpty()) return@withContext list
                 } catch (e: Exception) {
                     last = e

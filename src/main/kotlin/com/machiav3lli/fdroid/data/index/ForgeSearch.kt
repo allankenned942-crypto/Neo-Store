@@ -15,6 +15,7 @@ object ForgeSearch {
         val desc: String,
         val stars: Int,
         val host: String,
+        val icon: String = "",
     )
 
     private val ok = OkHttpClient()
@@ -30,6 +31,9 @@ object ForgeSearch {
     private fun str(o: JSONObject, k: String): String =
         if (o.isNull(k)) "" else o.optString(k)
 
+    private fun avatar(o: JSONObject): String =
+        o.optJSONObject("owner")?.let { str(it, "avatar_url") }.orEmpty()
+
     suspend fun search(q: String): List<Hit> = withContext(Dispatchers.IO) {
         val out = mutableListOf<Hit>()
         runCatching {
@@ -40,7 +44,7 @@ object ForgeSearch {
                 val a = JSONObject(t).optJSONArray("items")
                 if (a != null) for (i in 0 until a.length()) {
                     val o = a.getJSONObject(i)
-                    out.add(Hit(str(o, "full_name"), str(o, "html_url"), str(o, "description"), o.optInt("stargazers_count"), "GitHub"))
+                    out.add(Hit(str(o, "full_name"), str(o, "html_url"), str(o, "description"), o.optInt("stargazers_count"), "GitHub", avatar(o)))
                 }
             }
         }
@@ -52,7 +56,7 @@ object ForgeSearch {
                 val a = JSONObject(t).optJSONArray("data")
                 if (a != null) for (i in 0 until a.length()) {
                     val o = a.getJSONObject(i)
-                    out.add(Hit(str(o, "full_name"), str(o, "html_url"), str(o, "description"), o.optInt("stars_count"), "Codeberg"))
+                    out.add(Hit(str(o, "full_name"), str(o, "html_url"), str(o, "description"), o.optInt("stars_count"), "Codeberg", avatar(o)))
                 }
             }
         }
