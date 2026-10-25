@@ -79,6 +79,15 @@ import com.machiav3lli.fdroid.utils.onLaunchClick
 import com.machiav3lli.fdroid.viewmodels.ExploreVM
 import com.machiav3lli.fdroid.viewmodels.MainVM
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import coil3.compose.AsyncImage
+import com.machiav3lli.fdroid.data.index.AuroraSearch
+import com.machiav3lli.fdroid.data.index.ForgeSearch
+import com.machiav3lli.fdroid.ui.components.SourceBadge
+import com.machiav3lli.fdroid.viewmodels.PrefsVM
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,6 +157,44 @@ fun ExplorePage(
                 else -> {}
             }
         }
+    }
+
+    val prefsVM: PrefsVM = koinNeoViewModel()
+    var suggSeed by remember { mutableIntStateOf(0) }
+    var suggestions by remember { mutableStateOf<List<Sugg>>(emptyList()) }
+    LaunchedEffect(suggSeed) {
+        val words = listOf(
+            "video player", "notes", "vpn", "browser", "music player", "keyboard",
+            "file manager", "calculator", "camera", "launcher", "weather", "podcast",
+            "pdf reader", "password manager", "messenger", "gallery", "clock",
+            "downloader", "ebook reader", "terminal", "emulator", "wallpaper"
+        )
+        val picks = words.shuffled().take(2)
+        val out = mutableListOf<Sugg>()
+        try {
+            AuroraSearch.search(context, picks[0]).shuffled().take(6).forEach {
+                out.add(Sugg(it.name, it.pkg, it.icon, 1, it.pkg, ""))
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+        }
+        try {
+            ForgeSearch.search(picks[1] + " android").shuffled().take(6).forEach {
+                out.add(
+                    Sugg(
+                        it.name,
+                        "${it.host} - ${it.stars} estrelas" +
+                                (if (it.desc.isNotBlank()) " - ${it.desc.take(80)}" else ""),
+                        it.icon, 2, "", it.url
+                    )
+                )
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+        }
+        suggestions = out.shuffled()
     }
 
     BackHandler(selectedCategory.value != "") {
@@ -340,32 +387,6 @@ fun ExplorePage(
                             }
                         }
                     }
-                    item(key = "topAppsNotice") {
-                        Card(
-                            modifier = Modifier.padding(8.dp)
-                        ) {
-                            ListItem(
-                                colors = ListItemDefaults.colors(
-                                    containerColor = Color.Transparent,
-                                ),
-                                verticalAlignment = Alignment.CenterVertically,
-                                trailingContent = {
-                                    FilledRoundButton(
-                                        icon = Phosphor.Info,
-                                        description = stringResource(R.string.download_stats),
-                                    ) {
-                                        context.launchView(LINK_IOD_DLSTATS)
-                                    }
-                                },
-                                content = {
-                                    Text(
-                                        text = stringResource(R.string.top_apps_notice),
-                                        textAlign = TextAlign.Center,
-                                    )
-                                }
-                            )
-                        }
-                    }
                     items(items = topProductsState.items, key = { it.packageName }) { item ->
                         ProductsListItem(
                             item = item,
@@ -400,6 +421,84 @@ fun ExplorePage(
                             }
                         )
                     }
+                    val have = dataState.reposMap.values.map { it.address }.toSet()
+                    val shown = suggestions.filter {
+                        (if (it.kind == 1) "aurora://" + it.pkg else it.url) !in have
+                    }
+                    if (shown.isNotEmpty()) {
+                        item(key = "sugg_header") {
+                            Text(
+                                text = "Sugestoes (toque aqui pra trocar)",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { suggSeed++ }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            )
+                        }
+                        items(items = shown, key = { "sugg_" + it.kind + it.pkg + it.url }) { sg ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        scope.launch {
+                                            if (sg.kind == 1) {
+                                                val id = prefsVM.addPlayRepository(sg.pkg, sg.title)
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    if (id == null) "Abrindo: ${sg.title}" else "Sincronizando: ${sg.title}...",
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                                var found = false
+                                                for (i in 0 until 40) {
+                                                    found = kotlinx.coroutines.withContext(
+                                                        kotlinx.coroutines.Dispatchers.IO
+                                                    ) { mainVM.productExist(sg.pkg) }
+                                                    if (found) break
+                                                    kotlinx.coroutines.delay(1000)
+                                                }
+                                                if (found) neoActivity.navigateProduct(sg.pkg)
+                                                else android.widget.Toast.makeText(
+                                                    context,
+                                                    "Nao sincronizou (pode ser erro 429). Tente de novo",
+                                                    android.widget.Toast.LENGTH_LONG
+                                                ).show()
+                                            } else {
+                                                val id = prefsVM.addForgeRepository(sg.url, sg.title)
+                                                if (id == null) {
+                                                    android.widget.Toast.makeText(
+                                                        context, "Ja adicionado: ${sg.title}",
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                    return@launch
+                                                }
+                                                android.widget.Toast.makeText(
+                                                    context, "Sincronizando ${sg.title} (baixa o APK)...",
+                                                    android.widget.Toast.LENGTH_LONG
+                                                ).show()
+                                                val (pkg, err) = prefsVM.waitForRepoPackage(id)
+                                                if (pkg != null) neoActivity.navigateProduct(pkg)
+                                                else android.widget.Toast.makeText(
+                                                    context, err, android.widget.Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (sg.icon.isNotBlank()) AsyncImage(
+                                    model = sg.icon, contentDescription = null,
+                                    modifier = Modifier.size(44.dp).clip(MaterialTheme.shapes.small)
+                                ) else Box(Modifier.size(44.dp))
+                                Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+                                    Text(sg.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                    Text(sg.sub, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                }
+                                SourceBadge(if (sg.kind == 1) "AURORA" else "KOMI", sg.kind)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -433,3 +532,13 @@ fun ExplorePage(
         }
     }
 }
+
+
+private class Sugg(
+    val title: String,
+    val sub: String,
+    val icon: String,
+    val kind: Int,
+    val pkg: String,
+    val url: String,
+)
