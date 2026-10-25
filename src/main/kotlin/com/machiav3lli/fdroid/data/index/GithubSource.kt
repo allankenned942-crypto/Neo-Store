@@ -56,7 +56,7 @@ object GithubSource {
     private fun parse(address: String): Pair<String, String>? {
         val uri = runCatching { address.toUri() }.getOrNull() ?: return null
         val host = uri.host?.lowercase() ?: return null
-        if (host != "github.com" && host != "www.github.com") return null
+        if (host != "github.com" && host != "www.github.com" && host != "codeberg.org") return null
         val seg = uri.pathSegments.filter { it.isNotBlank() }
         if (seg.size < 2) return null
         // aceita github.com/dono/repo e github.com/dono/repo/releases...
@@ -78,7 +78,7 @@ object GithubSource {
         val (owner, repo) = parse(repository.address)
             ?: throw UpdateException(ErrorType.VALIDATION, "Endereco GitHub invalido")
 
-        val release = fetchLatestRelease(context, owner, repo)
+        val release = fetchLatestRelease(context, owner, repo, repository.address)
         if (release.tagName.isNotEmpty() && repository.lastModified == release.tagName) return null
 
         val asset = pickAsset(release.assets)
@@ -168,7 +168,7 @@ object GithubSource {
                 this.added = timestamp
                 this.updated = timestamp
                 this.releases = listOf(rel)
-                this.source = "https://github.com/$owner/$repo"
+                this.source = "https://" + (repository.address.toUri().host ?: "github.com").removePrefix("www.") + "/$owner/$repo"
                 this.web = release.htmlUrl
             }
 
@@ -196,8 +196,8 @@ object GithubSource {
         return apks.firstOrNull { it.name.contains("universal", ignoreCase = true) } ?: apks.first()
     }
 
-    private suspend fun fetchLatestRelease(context: Context, owner: String, repo: String): GhRelease {
-        val base = "https://api.github.com/repos/$owner/$repo"
+    private suspend fun fetchLatestRelease(context: Context, owner: String, repo: String, address: String): GhRelease {
+        val base = if (address.contains("codeberg.org")) "https://codeberg.org/api/v1/repos/$owner/$repo" else "https://api.github.com/repos/$owner/$repo"
         val (status, text) = getText(context, "$base/releases/latest")
         if (status.value in 200..299) {
             return runCatching { json.decodeFromString<GhRelease>(text) }.getOrElse {
@@ -208,7 +208,7 @@ object GithubSource {
             throw UpdateException(ErrorType.HTTP, "GitHub API: HTTP $status (limite de requisicoes?)")
         }
         // so existe pre-release (ou nenhuma release)
-        val (status2, text2) = getText(context, "$base/releases?per_page=1")
+        val (status2, text2) = getText(context, "$base/releases?per_page=1&limit=1")
         if (status2.value !in 200..299) {
             throw UpdateException(ErrorType.HTTP, "GitHub API: HTTP $status2")
         }

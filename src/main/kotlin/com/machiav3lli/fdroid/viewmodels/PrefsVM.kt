@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 
@@ -109,6 +111,28 @@ class PrefsVM(
         val id = reposRepo.insertReturn(repo)
         SyncWorker.enableRepo(repo.copy(id = id), true)
         return id
+    }
+
+    suspend fun addForgeRepository(address: String, label: String): Long? {
+        if (reposRepo.isDuplicateAddress(address)) return null
+        val repo = Repository(address = address, name = label, description = address)
+        val id = reposRepo.insertReturn(repo)
+        SyncWorker.enableRepo(repo.copy(id = id), true)
+        return id
+    }
+
+    suspend fun waitForRepoPackage(id: Long): Pair<String?, String> {
+        for (i in 0 until 90) {
+            val list = reposRepo.getProducts(id).first()
+            if (list.isNotEmpty()) return Pair(list.first().product.packageName, "")
+            val err = reposRepo.getById(id).first()?.lastError.orEmpty()
+            if (err.isNotEmpty()) {
+                SyncWorker.deleteRepo(id)
+                return Pair(null, "Falhou: $err")
+            }
+            delay(1000)
+        }
+        return Pair(null, "Demorou demais. Veja na lista de repositorios")
     }
 
     fun insertExtras(vararg items: Extras) {
