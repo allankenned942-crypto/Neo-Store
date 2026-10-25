@@ -146,6 +146,9 @@ fun ProductItemContent(
                 }
             }
         },
+        trailingContent = {
+            if (repo != null) SourceBadge(sourceLabel(repo), sourceKind(repo))
+        },
         supportingContent = {
             Text(
                 text = product.summary,

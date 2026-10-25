@@ -74,6 +74,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.machiav3lli.fdroid.data.index.AuroraSearch
 import com.machiav3lli.fdroid.data.index.GithubSource
 import coil3.compose.AsyncImage
+import com.machiav3lli.fdroid.ui.components.SourceBadge
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.draw.clip
@@ -452,7 +453,7 @@ fun SearchPage(
                                 model = r.icon, contentDescription = null,
                                 modifier = Modifier.size(44.dp).clip(MaterialTheme.shapes.small)
                             ) else Box(Modifier.size(44.dp))
-                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                            Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
                                 Text(r.name, style = MaterialTheme.typography.bodyLarge)
                                 Text(
                                     "${r.host} - ${r.stars} estrelas" +
@@ -461,6 +462,7 @@ fun SearchPage(
                                     maxLines = 2
                                 )
                             }
+                            SourceBadge("KOMI", 2)
                         }
                     }
                 }
@@ -511,10 +513,11 @@ fun SearchPage(
                                 model = r.icon, contentDescription = null,
                                 modifier = Modifier.size(44.dp).clip(MaterialTheme.shapes.small)
                             ) else Box(Modifier.size(44.dp))
-                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                            Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
                                 Text(r.name, style = MaterialTheme.typography.bodyLarge)
                                 Text(r.pkg, style = MaterialTheme.typography.bodySmall)
                             }
+                            SourceBadge("AURORA", 1)
                         }
                     }
                 }
