@@ -72,6 +72,7 @@ import com.machiav3lli.fdroid.viewmodels.SearchVM
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.rememberCoroutineScope
 import com.machiav3lli.fdroid.data.index.AuroraSearch
+import com.machiav3lli.fdroid.data.index.ForgeSearch
 import com.machiav3lli.fdroid.viewmodels.PrefsVM
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -158,6 +159,23 @@ fun SearchPage(
         // TODO find another solution as this blocks the predictive back gesture
         viewModel.setSearchQuery("")
         onDismiss()
+    }
+
+    var forgeResults by remember { mutableStateOf<List<ForgeSearch.Hit>>(emptyList()) }
+    LaunchedEffect(pageState.query) {
+        val q = pageState.query.trim()
+        if (q.length < 3) {
+            forgeResults = emptyList()
+            return@LaunchedEffect
+        }
+        delay(1200)
+        forgeResults = try {
+            ForgeSearch.search(q)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     LaunchedEffect(query) {
@@ -352,6 +370,50 @@ fun SearchPage(
                         } else action()
                     }
                 )
+            }
+            if (forgeResults.isNotEmpty()) {
+                item(key = "forge_header") {
+                    Text(
+                        text = "GitHub / Codeberg",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+                items(items = forgeResults, key = { "forge_" + it.url }) { r ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                playScope.launch {
+                                    val id = prefsVM.addForgeRepository(r.url, r.name)
+                                    if (id == null) {
+                                        android.widget.Toast.makeText(
+                                            context, "Ja adicionado: ${r.name}",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+                                    android.widget.Toast.makeText(
+                                        context, "Sincronizando ${r.name} (baixa o APK)...",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                    val (pkg, err) = prefsVM.waitForRepoPackage(id)
+                                    if (pkg != null) neoActivity.navigateProduct(pkg)
+                                    else android.widget.Toast.makeText(
+                                        context, err, android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(r.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "${r.host} - ${r.stars} estrelas" +
+                                    (if (r.desc.isNotBlank()) " - ${r.desc.take(80)}" else ""),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
             }
             val localPkgs = pageState.filteredProducts.map { it.packageName }.toSet()
             val hits = playResults.filter { it.pkg !in localPkgs }
