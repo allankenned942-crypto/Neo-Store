@@ -440,7 +440,7 @@ fun SearchPage(
                                         android.widget.Toast.LENGTH_LONG
                                     ).show()
                                     val (pkg, err) = prefsVM.waitForRepoPackage(id)
-                                    if (pkg != null) neoActivity.navigateProduct(pkg)
+                                    if (pkg != null) NeoApp.wm.install(Pair(pkg, id))
                                     else android.widget.Toast.makeText(
                                         context, err, android.widget.Toast.LENGTH_LONG
                                     ).show()
@@ -498,7 +498,7 @@ fun SearchPage(
                                         if (found) break
                                         delay(1000)
                                     }
-                                    if (found) neoActivity.navigateProduct(r.pkg)
+                                    if (found) NeoApp.wm.install(Pair(r.pkg, id))
                                     else android.widget.Toast.makeText(
                                         context,
                                         "Nao sincronizou (pode ser erro 429). Tente de novo",
