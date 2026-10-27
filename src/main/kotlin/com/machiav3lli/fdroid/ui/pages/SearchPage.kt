@@ -82,6 +82,7 @@ import com.machiav3lli.fdroid.data.index.ForgeSearch
 import com.machiav3lli.fdroid.viewmodels.PrefsVM
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 @Composable
 fun SearchPage(
