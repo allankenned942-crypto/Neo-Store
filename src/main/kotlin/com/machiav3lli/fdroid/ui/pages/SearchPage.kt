@@ -81,6 +81,8 @@ import androidx.compose.ui.draw.clip
 import com.machiav3lli.fdroid.data.index.ForgeSearch
 import com.machiav3lli.fdroid.viewmodels.PrefsVM
 import kotlinx.coroutines.delay
+import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.AlertDialog
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -606,4 +608,152 @@ fun SearchPage(
             }
         }
     }
+}
+
+
+    // Estado de progresso para download direto
+    private var directProgress by remember { mutableStateOf(0f) }
+    private var directDownloading by remember { mutableStateOf(false) }
+
+    private suspend fun directInstallPlay(packageName: String, label: String) {
+        val ctx = LocalContext.current
+        val cacheFileName = "direct-\$packageName.apk"
+        val releaseFile = Cache.getReleaseFile(ctx, cacheFileName)
+        directDownloading = true
+        directProgress = 0f
+        try {
+            val auth = AuroraSession.get(ctx)
+            val client = AuroraSession.client
+            val app = AppDetailsHelper(auth).using(client).getAppByPackageName(packageName)
+            val files = PurchaseHelper(auth).using(client)
+                .purchase(packageName, app.versionCode.toLong(), app.offerType)
+            if (files.isEmpty()) throw IOException("Play nao entregou arquivos")
+            if (files.any { it.type.name != "BASE" && it.type.name != "SPLIT" }) {
+                throw IOException("App com OBB/patch nao suportado")
+            }
+            val base = files.first { it.type.name == "BASE" }
+            val splits = files.filter { it.type.name == "SPLIT" }
+            releaseFile.parentFile?.listFiles { f ->
+                f.name.startsWith(cacheFileName + ".split")
+            }?.forEach { it.delete() }
+            val total = files.sumOf { it.size }
+            var done = 0L
+            suspend fun fetch(url: String, target: File) {
+                okHttp.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                    if (!r.isSuccessful) throw IOException("Download Play: HTTP \${r.code}")
+                    r.body.byteStream().use { input ->
+                        FileOutputStream(target).use { out ->
+                            val buf = ByteArray(65536)
+                            var n: Int
+                            while (input.read(buf).also { n = it } != -1) {
+                                out.write(buf, 0, n)
+                                done += n
+                                if (total > 0) directProgress = (done * 100f / total).coerceAtMost(100f)
+                            }
+                        }
+                    }
+                }
+            }
+            splits.forEachIndexed { i, f ->
+                fetch(f.url, Cache.getReleaseFile(ctx, "\$cacheFileName.split\$i"))
+            }
+            fetch(base.url, releaseFile)
+            directProgress = 100f
+            NeoApp.installer.install(label, cacheFileName) { result ->
+                directDownloading = false
+                if (result.isFailure) {
+                    android.widget.Toast.makeText(
+                        ctx, "Falha na instalacao: \${result.exceptionOrNull()?.message}",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        } catch (e: Exception) {
+            directDownloading = false
+            android.widget.Toast.makeText(
+                ctx, "Erro ao instalar: \${e.message}", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private suspend fun directInstallForge(repoUrl: String, label: String) {
+        val ctx = LocalContext.current
+        directDownloading = true
+        directProgress = 0f
+        try {
+            val (owner, repo) = runCatching {
+                val uri = repoUrl.toUri()
+                val seg = uri.pathSegments.filter { it.isNotBlank() }
+                seg[0] to seg[1].removeSuffix(".git")
+            }.getOrElse {
+                throw IOException("URL do repositorio invalida: \$repoUrl")
+            }
+            val base = if (repoUrl.contains("codeberg.org")) "https://codeberg.org/api/v1/repos/\$owner/\$repo" else "https://api.github.com/repos/\$owner/\$repo"
+            val releaseFile = Cache.getReleaseFile(ctx, "direct-forge.apk")
+            val (status, text) = withContext(Dispatchers.IO) {
+                val f = Cache.getTemporaryFile(ctx)
+                try {
+                    val result = Downloader.download(
+                        url = "\$base/releases/latest",
+                        target = f,
+                        lastModified = "",
+                        entityTag = "",
+                        authentication = "",
+                        rated = false
+                    ) { _, _, _ -> }
+                    f.readText() to result.statusCode
+                } finally {
+                    f.delete()
+                }
+            }
+            if (status !in 200..299) throw IOException("GitHub API: HTTP \$status")
+            import org.json.JSONObject
+            val jo = JSONObject(text)
+            val assets = jo.optJSONArray("assets")
+            if (assets == null || assets.length() == 0) throw IOException("Nenhum .apk na release")
+            var apkUrl: String? = null
+            for (i in 0 until assets.length()) {
+                val a = assets.getJSONObject(i)
+                val name = a.optString("name", "")
+                if (name.endsWith(".apk", ignoreCase = true)) {
+                    apkUrl = a.optString("browser_download_url", "")
+                    break
+                }
+            }
+            if (apkUrl.isNullOrBlank()) throw IOException("Nenhum .apk na release")
+            val f = Cache.getTemporaryFile(ctx)
+            try {
+                val result = Downloader.download(
+                    url = apkUrl!!,
+                    target = f,
+                    lastModified = "",
+                    entityTag = "",
+                    authentication = "",
+                    rated = true
+                ) { read, total, _ ->
+                    if (total != null && total > 0) directProgress = (read * 100f / total).coerceAtMost(100f)
+                }
+                if (!result.success) throw IOException("Download do APK: HTTP \${result.statusCode}")
+                f.copyTo(releaseFile, overwrite = true)
+                NeoApp.installer.install(label, "direct-forge.apk") { result ->
+                    directDownloading = false
+                    if (result.isFailure) {
+                        android.widget.Toast.makeText(
+                            ctx, "Falha na instalacao: \${result.exceptionOrNull()?.message}",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } finally {
+                f.delete()
+            }
+        } catch (e: Exception) {
+            directDownloading = false
+            android.widget.Toast.makeText(
+                ctx, "Erro ao instalar: \${e.message}", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+
 }
