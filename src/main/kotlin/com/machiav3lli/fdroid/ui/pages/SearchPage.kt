@@ -110,7 +110,7 @@ fun SearchPage(
             playResults = emptyList()
             return@LaunchedEffect
         }
-        delay(800)
+        delay(0)
         playLoading = true
         try {
             playResults = AuroraSearch.search(context, q)
@@ -176,7 +176,7 @@ fun SearchPage(
             forgeResults = emptyList()
             return@LaunchedEffect
         }
-        delay(1200)
+        delay(0)
         forgeResults = try {
             ForgeSearch.search(q)
         } catch (e: kotlinx.coroutines.CancellationException) {
