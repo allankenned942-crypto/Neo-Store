@@ -112,6 +112,7 @@ fun SearchPage(
         }
         delay(800)
         playLoading = true
+        delay(2000)
         try {
             playResults = AuroraSearch.search(context, q)
         } catch (e: kotlinx.coroutines.CancellationException) {
