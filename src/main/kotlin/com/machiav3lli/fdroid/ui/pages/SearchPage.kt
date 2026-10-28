@@ -497,7 +497,7 @@ fun SearchPage(
                                             kotlinx.coroutines.Dispatchers.IO
                                         ) { mainVM.productExist(r.pkg) }
                                         if (found) break
-                                        delay(300)
+                                        delay(0)
                                     }
                                     if (found) NeoApp.wm.install(Pair(r.pkg, id ?: -1))
                                     else android.widget.Toast.makeText(
