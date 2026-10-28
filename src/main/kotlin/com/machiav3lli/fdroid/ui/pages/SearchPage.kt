@@ -96,6 +96,8 @@ import com.machiav3lli.fdroid.manager.network.Downloader
 import com.machiav3lli.fdroid.manager.installer.AppInstaller
 import com.machiav3lli.fdroid.data.index.AuroraSession
 import com.machiav3lli.fdroid.data.content.Cache
+import androidx.core.net.toUri
+import android.content.Context
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -1018,6 +1020,126 @@ fun SearchPage(
         } catch (e: Exception) {
             android.widget.Toast.makeText(
                 context, "Erro ao instalar: \${e.message}", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+
+}
+
+
+    private val okHttp = OkHttpClient()
+
+    private suspend fun directInstallPlay(context: Context, packageName: String, label: String) {
+        val cacheFileName = "direct-$packageName.apk"
+        val releaseFile = Cache.getReleaseFile(context, cacheFileName)
+        try {
+            val auth = AuroraSession.get(context)
+            val client = AuroraSession.client
+            val app = AppDetailsHelper(auth).using(client).getAppByPackageName(packageName)
+            val files = PurchaseHelper(auth).using(client)
+                .purchase(packageName, app.versionCode.toLong(), app.offerType)
+            if (files.isEmpty()) throw IOException("Play nao entregou arquivos")
+            if (files.any { it.type.name != "BASE" && it.type.name != "SPLIT" }) {
+                throw IOException("App com OBB/patch nao suportado")
+            }
+            val base = files.first { it.type.name == "BASE" }
+            val splits = files.filter { it.type.name == "SPLIT" }
+            releaseFile.parentFile?.listFiles { f ->
+                f.name.startsWith(cacheFileName + ".split")
+            }?.forEach { it.delete() }
+            val total = files.sumOf { it.size }
+            var done = 0L
+            suspend fun fetch(url: String, target: File) {
+                okHttp.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                    if (!r.isSuccessful) throw IOException("Download Play: HTTP ${r.code}")
+                    r.body.byteStream().use { input ->
+                        FileOutputStream(target).use { out ->
+                            val buf = ByteArray(65536)
+                            var n: Int
+                            while (input.read(buf).also { n = it } != -1) {
+                                out.write(buf, 0, n)
+                                done += n
+                            }
+                        }
+                    }
+                }
+            }
+            splits.forEachIndexed { i, f ->
+                fetch(f.url, Cache.getReleaseFile(context, "$cacheFileName.split$i"))
+            }
+            fetch(base.url, releaseFile)
+            NeoApp.installer.install(label, cacheFileName) { result ->
+                if (result.isFailure) {
+                    android.widget.Toast.makeText(
+                        context, "Falha na instalacao: ${result.exceptionOrNull()?.message}",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(
+                context, "Erro ao instalar: ${e.message}", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private suspend fun directInstallForge(context: Context, repoUrl: String, label: String) {
+        try {
+            val uri = repoUrl.toUri()
+            val seg = uri.pathSegments.filter { it.isNotBlank() }
+            val owner = seg[0]
+            val repo = seg[1].removeSuffix(".git")
+            val base = if (repoUrl.contains("codeberg.org")) "https://codeberg.org/api/v1/repos/$owner/$repo" else "https://api.github.com/repos/$owner/$repo"
+            val releaseFile = Cache.getReleaseFile(context, "direct-forge.apk")
+            val tmp = Cache.getTemporaryFile(context)
+            try {
+                val result = Downloader.download(
+                    url = "$base/releases/latest",
+                    target = tmp,
+                    lastModified = "",
+                    entityTag = "",
+                    authentication = "",
+                    rated = false
+                ) { _, _, _ -> }
+                if (!result.success) throw IOException("GitHub API: HTTP ${result.statusCode}")
+                val text = tmp.readText()
+                val jo = JSONObject(text)
+                val assets = jo.optJSONArray("assets")
+                if (assets == null || assets.length() == 0) throw IOException("Nenhum .apk na release")
+                var apkUrl: String? = null
+                for (i in 0 until assets.length()) {
+                    val a = assets.getJSONObject(i)
+                    val name = a.optString("name", "")
+                    if (name.endsWith(".apk", ignoreCase = true)) {
+                        apkUrl = a.optString("browser_download_url", "")
+                        break
+                    }
+                }
+                if (apkUrl.isNullOrBlank()) throw IOException("Nenhum .apk na release")
+                val result2 = Downloader.download(
+                    url = apkUrl!!,
+                    target = releaseFile,
+                    lastModified = "",
+                    entityTag = "",
+                    authentication = "",
+                    rated = true
+                ) { _, _, _ -> }
+                if (!result2.success) throw IOException("Download do APK: HTTP ${result2.statusCode}")
+                NeoApp.installer.install(label, "direct-forge.apk") { result ->
+                    if (result.isFailure) {
+                        android.widget.Toast.makeText(
+                            context, "Falha na instalacao: ${result.exceptionOrNull()?.message}",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } finally {
+                tmp.delete()
+            }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(
+                context, "Erro ao instalar: ${e.message}", android.widget.Toast.LENGTH_LONG
             ).show()
         }
     }
